@@ -232,7 +232,7 @@ class Learner1D(BaseLearner):
         # the learners behavior in the tests.
         self._recompute_losses_factor = 2
 
-        self.data = {}
+        self._data = {}
         self.pending_points = set()
 
         # A dict {x_n: [x_{n-1}, x_{n+1}]} for quick checking of local
@@ -257,6 +257,10 @@ class Learner1D(BaseLearner):
         self.bounds = list(bounds)
 
         self._vdim = None
+
+    @property
+    def data(self):
+        return self._data
 
     @property
     def vdim(self):
@@ -433,7 +437,7 @@ class Learner1D(BaseLearner):
 
     def tell(self, x, y):
         if x in self.data:
-            # The point is already evaluated before
+            # The point is already evaluated before.
             return
         if y is None:
             raise TypeError("Y-value may not be None, use learner.tell_pending(x)"
@@ -443,12 +447,15 @@ class Learner1D(BaseLearner):
         if not isinstance(y, (float, int)):
             y = np.asarray(y, dtype=float)
 
-        # Add point to the real data dict
+        # Add point to the real data dict.
         self.data[x] = y
 
-        # remove from set of pending points
+        # Remove from set of pending points.
         self.pending_points.discard(x)
 
+        self._update_data_structures(x, y)
+
+    def _update_data_structures(self, x, y):
         if not self.bounds[0] <= x <= self.bounds[1]:
             return
 
