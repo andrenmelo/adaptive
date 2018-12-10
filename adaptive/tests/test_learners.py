@@ -17,7 +17,8 @@ import scipy.spatial
 
 import adaptive
 from adaptive.learner import (AverageLearner, BalancingLearner, DataSaver,
-    IntegratorLearner, Learner1D, Learner2D, LearnerND)
+    IntegratorLearner, Learner1D, Learner2D, LearnerND,
+    AverageLearner1D, AverageLearner2D)
 from adaptive.runner import simple
 
 
@@ -106,12 +107,32 @@ def linear_with_peak(x, d: uniform(-1, 1)):
     return x + a**2 / (a**2 + (x - d)**2)
 
 
+@learn_with(AverageLearner1D, bounds=(-1, 1))
+def random_linear_with_peak(x_seed, d: uniform(-1, 1)):
+    x, seed = x_seed
+    random.seed(seed)
+    a = 0.01
+    noise = random.uniform(-0.5, 0.5)
+    peak = x + a**2 / (a**2 + (x - d)**2)
+    return peak + noise
+
+
 @learn_with(LearnerND, bounds=((-1, 1), (-1, 1)))
 @learn_with(Learner2D, bounds=((-1, 1), (-1, 1)))
 def ring_of_fire(xy, d: uniform(0.2, 1)):
     a = 0.2
     x, y = xy
     return x + math.exp(-(x**2 + y**2 - d**2)**2 / a**4)
+
+
+@learn_with(AverageLearner2D, bounds=((-1, 1), (-1, 1)))
+def random_ring_of_fire(xy, d: uniform(0.2, 1)):
+    a = 0.2
+    (x, y), seed = xy
+    random.seed(seed)
+    noise = random.uniform(-0.5, 0.5)
+    ring = x + math.exp(-(x**2 + y**2 - d**2)**2 / a**4)
+    return ring + noise
 
 
 @learn_with(LearnerND, bounds=((-1, 1), (-1, 1), (-1, 1)))
@@ -174,7 +195,7 @@ def ask_randomly(learner, rounds, points):
 
 # Tests
 
-@run_with(Learner1D)
+@run_with(Learner1D, AverageLearner1D)
 def test_uniform_sampling1D(learner_type, f, learner_kwargs):
     """Points are sampled uniformly if no data is provided.
 
@@ -192,7 +213,7 @@ def test_uniform_sampling1D(learner_type, f, learner_kwargs):
 
 
 @pytest.mark.xfail
-@run_with(Learner2D, LearnerND)
+@run_with(Learner2D, LearnerND, AverageLearner2D)
 def test_uniform_sampling2D(learner_type, f, learner_kwargs):
     """Points are sampled uniformly if no data is provided.
 
@@ -229,7 +250,8 @@ def test_learner_accepts_lists(learner_type, bounds):
     simple(learner, goal=lambda l: l.npoints > 10)
 
 
-@run_with(Learner1D, Learner2D, LearnerND)
+@run_with(Learner1D, Learner2D, LearnerND, Learner1D,
+    AverageLearner1D, AverageLearner2D)
 def test_adding_existing_data_is_idempotent(learner_type, f, learner_kwargs):
     """Adding already existing data is an idempotent operation.
 
@@ -265,7 +287,8 @@ def test_adding_existing_data_is_idempotent(learner_type, f, learner_kwargs):
 
 # XXX: This *should* pass (https://gitlab.kwant-project.org/qt/adaptive/issues/84)
 #      but we xfail it now, as Learner2D will be deprecated anyway
-@run_with(Learner1D, xfail(Learner2D), LearnerND, AverageLearner)
+@run_with(Learner1D, AverageLearner1D, xfail(Learner2D), LearnerND,
+    AverageLearner, xfail(AverageLearner2D))
 def test_adding_non_chosen_data(learner_type, f, learner_kwargs):
     """Adding data for a point that was not returned by 'ask'."""
     # XXX: learner, control and bounds are not defined
@@ -295,7 +318,8 @@ def test_adding_non_chosen_data(learner_type, f, learner_kwargs):
     assert set(pls) == set(cpls)
 
 
-@run_with(Learner1D, xfail(Learner2D), xfail(LearnerND), AverageLearner)
+@run_with(Learner1D, xfail(Learner2D), xfail(LearnerND), AverageLearner,
+    xfail(AverageLearner1D), xfail(AverageLearner2D))
 def test_point_adding_order_is_irrelevant(learner_type, f, learner_kwargs):
     """The order of calls to 'tell' between calls to 'ask'
     is arbitrary.
@@ -304,6 +328,8 @@ def test_point_adding_order_is_irrelevant(learner_type, f, learner_kwargs):
     `interpolate.interpnd.estimate_gradients_2d_global` will give different
     outputs based on the order of the triangles and values in
     (ip.tri, ip.values). Therefore the _stack will contain different points.
+
+    The AverageLearner1D fails because the returned points are tuples.
     """
     f = generate_random_parametrization(f)
     learner = learner_type(f, **learner_kwargs)
@@ -337,7 +363,8 @@ def test_point_adding_order_is_irrelevant(learner_type, f, learner_kwargs):
 
 # XXX: the Learner2D fails with ~50% chance
 # see https://gitlab.kwant-project.org/qt/adaptive/issues/84
-@run_with(Learner1D, xfail(Learner2D), LearnerND, AverageLearner)
+@run_with(Learner1D, xfail(Learner2D), LearnerND, xfail(AverageLearner),
+    AverageLearner1D, xfail(AverageLearner2D))
 def test_expected_loss_improvement_is_less_than_total_loss(learner_type, f, learner_kwargs):
     """The estimated loss improvement can never be greater than the total loss."""
     f = generate_random_parametrization(f)
@@ -364,7 +391,8 @@ def test_expected_loss_improvement_is_less_than_total_loss(learner_type, f, lear
 #      but we xfail it now, as Learner2D will be deprecated anyway
 # The LearnerND fails sometimes, see
 # https://gitlab.kwant-project.org/qt/adaptive/merge_requests/128#note_21807
-@run_with(Learner1D, xfail(Learner2D), xfail(LearnerND))
+@run_with(Learner1D, xfail(Learner2D), xfail(LearnerND),
+    AverageLearner1D, xfail(AverageLearner2D))
 def test_learner_performance_is_invariant_under_scaling(learner_type, f, learner_kwargs):
     """Learners behave identically under transformations that leave
        the loss invariant.
@@ -407,6 +435,7 @@ def test_learner_performance_is_invariant_under_scaling(learner_type, f, learner
 
 
 @run_with(Learner1D, Learner2D, LearnerND, AverageLearner,
+    AverageLearner1D, AverageLearner2D,
     with_all_loss_functions=False)
 def test_balancing_learner(learner_type, f, learner_kwargs):
     """Test if the BalancingLearner works with the different types of learners."""
@@ -417,8 +446,8 @@ def test_balancing_learner(learner_type, f, learner_kwargs):
 
     # Emulate parallel execution
     stash = []
-
-    for i in range(100):
+    N = 100
+    for i in range(N):
         n = random.randint(1, 10)
         m = random.randint(0, n)
         xs, _ = learner.ask(n, tell_pending=False)
@@ -437,7 +466,10 @@ def test_balancing_learner(learner_type, f, learner_kwargs):
             x = stash.pop()
             learner.tell(x, learner.function(x))
 
-    assert all(l.npoints > 10 for l in learner.learners), [l.npoints for l in learner.learners]
+    if learner_type in (AverageLearner1D, AverageLearner2D):
+        assert all(l.npoints * l.mean_values_per_point() > 10 for l in learner.learners)
+    else:
+        assert all(l.npoints > 10 for l in learner.learners)
 
 
 @run_with(Learner1D, Learner2D, LearnerND, AverageLearner,
@@ -526,7 +558,7 @@ def test_saving_with_datasaver(learner_type, f, learner_kwargs):
 
 
 @pytest.mark.xfail
-@run_with(Learner1D, Learner2D, LearnerND)
+@run_with(Learner1D, Learner2D, LearnerND, AverageLearner1D, AverageLearner2D)
 def test_convergence_for_arbitrary_ordering(learner_type, f, learner_kwargs):
     """Learners that are learning the same function should converge
     to the same result "eventually" if given the same data, regardless
@@ -538,7 +570,7 @@ def test_convergence_for_arbitrary_ordering(learner_type, f, learner_kwargs):
 
 
 @pytest.mark.xfail
-@run_with(Learner1D, Learner2D, LearnerND)
+@run_with(Learner1D, Learner2D, LearnerND, AverageLearner1D, AverageLearner2D)
 def test_learner_subdomain(learner_type, f, learner_kwargs):
     """Learners that never receive data outside of a subdomain should
        perform 'similarly' to learners defined on that subdomain only."""
